@@ -29,10 +29,54 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // ── App-shell precaching ──────────────────────────────────────────────
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         cleanupOutdatedCaches: true,
+
+        // New SW activates immediately and claims all open tabs.
+        // main.tsx listens for 'controllerchange' and reloads the page,
+        // ensuring users always run the latest JS bundle after an update.
         clientsClaim: true,
         skipWaiting: true,
+
+        // ── Runtime caching ───────────────────────────────────────────────────
+        // All Firebase / Google API calls must go directly to the network.
+        // Firestore uses gRPC-Web streams (not SW-interceptable), but Auth
+        // token refresh and REST fallback calls use plain HTTPS that the SW
+        // CAN intercept. NetworkOnly ensures the SW never serves a stale
+        // token or a cached Firestore response.
+        runtimeCaching: [
+          // Firestore REST API & gRPC-Web streaming endpoint
+          {
+            urlPattern: /^https:\/\/firestore\.googleapis\.com\//,
+            handler: 'NetworkOnly',
+          },
+          // Firebase Auth — Identity Toolkit (signIn, getUser, etc.)
+          {
+            urlPattern: /^https:\/\/identitytoolkit\.googleapis\.com\//,
+            handler: 'NetworkOnly',
+          },
+          // Firebase Auth — Secure Token Service (token refresh)
+          {
+            urlPattern: /^https:\/\/securetoken\.googleapis\.com\//,
+            handler: 'NetworkOnly',
+          },
+          // Firebase platform services (Storage, Remote Config, etc.)
+          {
+            urlPattern: /^https:\/\/firebase\.googleapis\.com\//,
+            handler: 'NetworkOnly',
+          },
+          // Catch-all: any other *.googleapis.com endpoint
+          {
+            urlPattern: /^https:\/\/[a-z0-9-]+\.googleapis\.com\//,
+            handler: 'NetworkOnly',
+          },
+          // Google Sign-In / OAuth
+          {
+            urlPattern: /^https:\/\/accounts\.google\.com\//,
+            handler: 'NetworkOnly',
+          },
+        ],
       },
     }),
   ],
