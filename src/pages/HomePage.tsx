@@ -20,7 +20,7 @@ const HomePage: React.FC<Props> = ({ onNavigateToInput }) => {
   const monthTxsForSummary = getMonthTransactions(state.transactions, year, month);
   const expense = monthTxsForSummary.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const baseMonthlyBudget = state.settings.monthlyBudget;
-  const { effectiveBudget: monthlyBudget, carryover } = getEffectiveBudget(state.transactions, baseMonthlyBudget, year, month);
+  const { effectiveBudget: monthlyBudget, carryover } = getEffectiveBudget(state.transactions, baseMonthlyBudget, year, month, state.settings.budgetStartMonth);
   const remaining = monthlyBudget > 0 ? monthlyBudget - expense : null;
   const budgets = getActiveBudgets(state.budgets, state.transactions, state.categories, year, month);
   const overBudgets = budgets.filter(b => b.isOver);

@@ -32,7 +32,6 @@ export const getMonthTransactions = (
   });
 };
 
-
 export const getCategoryExpenses = (
   transactions: Transaction[],
   categories: Category[],
@@ -124,11 +123,20 @@ export const getEffectiveBudget = (
   transactions: Transaction[],
   monthlyBudget: number,
   year: number,
-  month: number
+  month: number,
+  budgetStartMonth: string = ''
 ): { effectiveBudget: number; carryover: number } => {
   if (monthlyBudget <= 0) return { effectiveBudget: 0, carryover: 0 };
+
   const lastYear = month === 1 ? year - 1 : year;
   const lastMonth = month === 1 ? 12 : month - 1;
+  const lastYM = `${lastYear}-${String(lastMonth).padStart(2, '0')}`;
+
+  // No carryover if budget wasn't configured last month (first month of budgeting)
+  if (!budgetStartMonth || lastYM < budgetStartMonth) {
+    return { effectiveBudget: monthlyBudget, carryover: 0 };
+  }
+
   const lastMonthSpent = getMonthTransactions(transactions, lastYear, lastMonth)
     .filter((t) => t.type === 'expense')
     .reduce((s, t) => s + t.amount, 0);

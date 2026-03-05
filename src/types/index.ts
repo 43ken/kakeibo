@@ -1,5 +1,5 @@
 export type TransactionType = 'expense';
-export type Page = 'home' | 'input' | 'calendar' | 'charts' | 'settings';
+export type Page = 'home' | 'input' | 'review' | 'calendar' | 'settings';
 
 export interface Category {
   id: string;
@@ -33,6 +33,7 @@ export interface Transaction {
   paymentMethodId: string;
   paymentAccountId?: string;
   createdAt: string;
+  checked?: boolean;
 }
 
 export interface Budget {
@@ -43,6 +44,7 @@ export interface Budget {
 export interface Settings {
   darkMode: boolean;
   monthlyBudget: number;
+  budgetStartMonth: string; // 'YYYY-MM' format. Empty string = never set.
 }
 
 export interface AppState {

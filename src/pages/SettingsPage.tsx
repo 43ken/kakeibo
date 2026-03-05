@@ -289,7 +289,17 @@ const SettingsPage: React.FC = () => {
             <input
               type="number" inputMode="numeric" min="0" placeholder="300000"
               value={state.settings.monthlyBudget === 0 ? '' : state.settings.monthlyBudget}
-              onChange={e => { const v = parseInt(e.target.value); dispatch({ type: 'UPDATE_SETTINGS', payload: { monthlyBudget: isNaN(v) ? 0 : v } }); }}
+              onChange={e => {
+                const v = parseInt(e.target.value);
+                const newBudget = isNaN(v) ? 0 : v;
+                const payload: any = { monthlyBudget: newBudget };
+                // Set budgetStartMonth when budget is first configured
+                if (newBudget > 0 && !state.settings.budgetStartMonth) {
+                  const now = new Date();
+                  payload.budgetStartMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                }
+                dispatch({ type: 'UPDATE_SETTINGS', payload });
+              }}
               style={{ border: 'none', background: 'transparent', fontSize: 17, color: 'var(--text)', textAlign: 'right', outline: 'none', fontFamily: 'inherit', width: 120 }}
             />
           </div>
@@ -407,7 +417,7 @@ const SettingsPage: React.FC = () => {
         <div className="settings-section-title">詳細</div>
         <div className="settings-row">
           <button className="btn btn-sm" style={{ width: '100%', background: 'rgba(255,59,48,0.1)', color: 'var(--red)' }}
-            onClick={() => { if (confirm('すべてのデータを削除しますか？この操作は取り消せません。')) { localStorage.clear(); window.location.reload(); } }}>
+            onClick={() => { if (confirm('すべてのデータを削除しますか？この操作は取り消せません。')) { window.location.reload(); } }}>
             🗑️ すべてのデータをリセット
           </button>
         </div>
