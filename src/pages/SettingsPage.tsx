@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useApp } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Category, Budget, PaymentMethod, PaymentAccount } from '../types';
 import { formatAmount, getActiveBudgets } from '../utils/calculations';
 import { exportToCSV, getMonthRange } from '../utils/export';
@@ -259,6 +262,7 @@ const ExportModal: React.FC<{ onExport: (start: string, end: string) => void; on
 // ─── Settings Page ────────────────────────────────────────────────────────────
 const SettingsPage: React.FC = () => {
   const { state, dispatch } = useApp();
+  const { householdId } = useAuth();
   const now = new Date();
   const [showCatModal, setShowCatModal] = useState(false);
   const [editCat, setEditCat] = useState<Category | undefined>();
@@ -268,8 +272,25 @@ const SettingsPage: React.FC = () => {
   const [editPm, setEditPm] = useState<PaymentMethod | undefined>();
   const [showPaModal, setShowPaModal] = useState(false);
   const [editPa, setEditPa] = useState<PaymentAccount | undefined>();
+  const [inviteCode, setInviteCode] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const budgetStatus = getActiveBudgets(state.budgets, state.transactions, state.categories, now.getFullYear(), now.getMonth() + 1);
+
+  useEffect(() => {
+    if (!householdId) return;
+    getDoc(doc(db, 'households', householdId)).then(snap => {
+      if (snap.exists()) setInviteCode(snap.data().inviteCode ?? '');
+    });
+  }, [householdId]);
+
+  const handleCopyCode = () => {
+    if (!inviteCode) return;
+    navigator.clipboard.writeText(inviteCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   return (
     <main className="page fade-in">
@@ -277,6 +298,32 @@ const SettingsPage: React.FC = () => {
         <div style={{ fontSize: 36 }}>💰</div>
         <div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>家計簿アプリ</div>
         <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>シンプル家計管理</div>
+      </div>
+
+      {/* 家族を招待 */}
+      <div className="settings-section">
+        <div className="settings-section-title">家族を招待</div>
+        <div style={{ padding: '8px 16px 16px' }}>
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
+            以下の招待コードを家族に共有してください
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              flex: 1, textAlign: 'center', fontSize: 26, fontWeight: 700,
+              letterSpacing: 6, fontFamily: 'monospace', color: 'var(--blue)',
+              background: 'var(--card2)', borderRadius: 12, padding: '14px 8px',
+            }}>
+              {inviteCode || '------'}
+            </div>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleCopyCode}
+              style={{ flexShrink: 0, minWidth: 80 }}
+            >
+              {copied ? '✓ コピー済' : '📋 コピー'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* 月の予算 */}

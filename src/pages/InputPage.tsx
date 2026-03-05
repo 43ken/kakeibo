@@ -389,27 +389,31 @@ const ReceiptScanner: React.FC<{
           </div>
 
           {/* 登録ボタン */}
-          {extracted.items.length > 0 ? (
+          <div style={{
+            position: 'sticky', bottom: 0,
+            background: 'var(--bg)', paddingTop: 8, paddingBottom: 8,
+          }}>
+            {extracted.items.length > 0 ? (
+              <button
+                className="btn btn-success"
+                onClick={handleItemsSubmit}
+                disabled={grouped.length === 0}
+              >
+                ✓ カテゴリ別に登録する
+              </button>
+            ) : (
+              <button className="btn btn-success" onClick={handleNoItemsApply}>
+                ✓ 手動フォームに反映
+              </button>
+            )}
             <button
-              className="btn btn-success"
-              onClick={handleItemsSubmit}
-              disabled={grouped.length === 0}
+              className="btn btn-ghost"
+              style={{ marginTop: 10 }}
+              onClick={() => { setExtracted(null); setImageUrl(null); setImageFile(null); }}
             >
-              ✓ カテゴリ別に登録する
+              やり直す
             </button>
-          ) : (
-            <button className="btn btn-success" onClick={handleNoItemsApply}>
-              ✓ 手動フォームに反映
-            </button>
-          )}
-
-          <button
-            className="btn btn-ghost"
-            style={{ marginTop: 10 }}
-            onClick={() => { setExtracted(null); setImageUrl(null); setImageFile(null); }}
-          >
-            やり直す
-          </button>
+          </div>
         </div>
       )}
     </div>
@@ -557,12 +561,17 @@ const InputPage: React.FC<Props> = ({ editTx, onDone }) => {
             onAccountChange={setPaymentAccountId}
           />
 
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={!isValid} style={{ marginTop: 8 }}>
-            {isEdit ? '✓ 更新する' : '+ 追加する'}
-          </button>
-          {isEdit && (
-            <button className="btn btn-ghost" onClick={onDone} style={{ marginTop: 12 }}>キャンセル</button>
-          )}
+          <div style={{
+            position: 'sticky', bottom: 0,
+            background: 'var(--bg)', paddingTop: 8, paddingBottom: 8,
+          }}>
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={!isValid}>
+              {isEdit ? '✓ 更新する' : '+ 追加する'}
+            </button>
+            {isEdit && (
+              <button className="btn btn-ghost" onClick={onDone} style={{ marginTop: 10 }}>キャンセル</button>
+            )}
+          </div>
         </>
       )}
     </main>
