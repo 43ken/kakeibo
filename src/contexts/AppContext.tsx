@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import {
   doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc,
+  query, orderBy,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
@@ -142,7 +143,7 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
-// Write the action result to Firestore
+// ─── Firestore Sync ────────────────────────────────────────────────────────────
 async function syncToFirestore(
   action: Action,
   prevState: AppState,
@@ -209,15 +210,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const householdIdRef = useRef(householdId);
   householdIdRef.current = householdId;
 
-  // Firestore real-time listeners
+  // ─── Firestore real-time listeners ───────────────────────────────────────────
   useEffect(() => {
     if (!householdId) return;
 
-    // Listen to config document
-    const unsubConfig = onSnapshot(
-      doc(db, 'households', householdId, 'config', CONFIG_DOC),
-      (snap) => {
-        if (snap.exists()) {
+    let destroyed = false;
+    let unsubConfig: (() => void) | null = null;
+    let unsubTx: (() => void) | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearRetry = () => {
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    };
+
+    const unsubscribeAll = () => {
+      clearRetry();
+      unsubConfig?.(); unsubConfig = null;
+      unsubTx?.();     unsubTx     = null;
+    };
+
+    const setupListeners = () => {
+      if (destroyed) return;
+
+      // ── Config listener ──────────────────────────────────────────────────────
+      unsubConfig = onSnapshot(
+        doc(db, 'households', householdId, 'config', CONFIG_DOC),
+        (snap) => {
+          if (!snap.exists()) return;
           const d = snap.data();
           baseDispatch({
             type: 'SYNC_CONFIG',
@@ -229,33 +248,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 budgetStartMonth: '',
                 ...d.settings,
               },
-              paymentMethods: (d.paymentMethods && d.paymentMethods.length > 0) ? d.paymentMethods : DEFAULT_PAYMENT_METHODS,
+              paymentMethods: (d.paymentMethods && d.paymentMethods.length > 0)
+                ? d.paymentMethods
+                : DEFAULT_PAYMENT_METHODS,
               paymentAccounts: d.paymentAccounts ?? [],
               budgets: d.budgets ?? [],
             },
           });
+        },
+        (err) => {
+          console.error('[Firestore] config listener error:', err.code, err.message);
+          // Retry subscription after 3 s
+          unsubscribeAll();
+          if (!destroyed) {
+            retryTimer = setTimeout(setupListeners, 3000);
+          }
         }
-      }
-    );
+      );
 
-    // Listen to transactions collection
-    const unsubTx = onSnapshot(
-      collection(db, 'households', householdId, 'transactions'),
-      (snap) => {
-        const txs = snap.docs.map((d) => ({ ...d.data(), id: d.id } as Transaction));
-        baseDispatch({ type: 'SYNC_TRANSACTIONS', payload: txs });
-      }
-    );
+      // ── Transactions listener ─────────────────────────────────────────────────
+      // orderBy('createdAt') ensures Firestore returns documents in insertion order
+      // and also creates a consistent snapshot for both members.
+      const txQuery = query(
+        collection(db, 'households', householdId, 'transactions'),
+        orderBy('createdAt', 'asc')
+      );
+
+      unsubTx = onSnapshot(
+        txQuery,
+        (snap) => {
+          // snap.docs always reflects the current server state (plus local pending writes).
+          // Using docChanges() would be more efficient but snap.docs is simpler and correct.
+          const txs: Transaction[] = snap.docs.map((d) => ({
+            ...(d.data() as Omit<Transaction, 'id'>),
+            id: d.id,
+          }));
+          baseDispatch({ type: 'SYNC_TRANSACTIONS', payload: txs });
+        },
+        (err) => {
+          console.error('[Firestore] transactions listener error:', err.code, err.message);
+          // Retry subscription after 3 s
+          unsubscribeAll();
+          if (!destroyed) {
+            retryTimer = setTimeout(setupListeners, 3000);
+          }
+        }
+      );
+    };
+
+    setupListeners();
 
     return () => {
-      unsubConfig();
-      unsubTx();
+      destroyed = true;
+      unsubscribeAll();
     };
   }, [householdId]);
 
-  // Custom dispatch: update local state optimistically + write to Firestore
+  // ─── Custom dispatch ──────────────────────────────────────────────────────────
+  // 1. Enrich the action with pre-generated IDs
+  // 2. Apply optimistic local update immediately
+  // 3. Persist to Firestore (if write fails, onSnapshot will eventually reconcile)
   const dispatch = useCallback((action: Action) => {
-    // Enrich ADD actions with pre-generated IDs
     let enriched = action;
     if (action.type === 'ADD_TRANSACTION' && !action.payload.id) {
       enriched = {
@@ -274,20 +327,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       enriched = { ...action, payload: { ...action.payload, id: uuidv4() } };
     }
 
-    // Optimistic local update
+    // Optimistic local update — keeps the UI snappy
     baseDispatch(enriched);
 
-    // Write to Firestore (skip sync-only actions)
+    // Persist to Firestore (skip internal sync actions)
     const hid = householdIdRef.current;
     if (hid && enriched.type !== 'SYNC_CONFIG' && enriched.type !== 'SYNC_TRANSACTIONS') {
       const newState = reducer(stateRef.current, enriched);
-      syncToFirestore(enriched, stateRef.current, newState, hid).catch((err) =>
-        console.error('[Firestore]', err)
-      );
+      syncToFirestore(enriched, stateRef.current, newState, hid).catch((err) => {
+        // Write failed — log the error.
+        // The onSnapshot listener will reconcile the local state with Firestore on next event.
+        console.error('[Firestore] write error:', err.code ?? err.message, enriched.type);
+      });
     }
   }, []);
 
-  // Dark mode
+  // ─── Dark mode ────────────────────────────────────────────────────────────────
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', state.settings.darkMode ? 'dark' : 'light');
   }, [state.settings.darkMode]);
